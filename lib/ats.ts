@@ -14,5 +14,4 @@ for(const assessment of candidate.assessments||[])if(pillars.some(p=>assessment.
 export type Candidate=z.infer<typeof candidateSchema>;
 export type Job=z.infer<typeof jobSchema>;
 export type State=z.infer<typeof stateSchema>;
-export function initialState(){const at=new Date().toISOString();return {stages:[...stages],jobs:[],candidates:[{id:'emanuelle-santos',name:'Emanuelle Santos',phone:'12 98217-4240',email:'',linkedin:'https://www.linkedin.com/in/emanuelle-santos-124162301/',source:'LinkedIn',channel:'InMail',jobId:'',stage:'Novo',owner:'',nextAction:'',due:'',notes:'',evaluation:'',reason:'',created:at,updated:at,resume:null,history:[{at,text:'Cadastro inicial • origem LinkedIn / InMail'}]}]};}
-
+export function initialState(){return {stages:[...stages],jobs:[],candidates:[]};}

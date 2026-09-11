@@ -37,7 +37,7 @@ export default function Workspace({userName}:{userName:string}){
  const overdue=data?.candidates.filter(c=>!closed(c.stage)).reduce((sum,c)=>sum+(c.tasks||[]).filter(t=>!t.done&&t.due&&t.due<today).length,0)||0;
  function field(label:string,key:keyof Candidate,type='text'){return <label>{label}<Input type={type} value={String(draft?.[key]||'')} onChange={e=>setDraft(d=>d?{...d,[key]:e.target.value}:d)} /></label>;}
  const errorBox=error?<div className="error" role="alert">{error}</div>:null;
- return <div className="workspace"><header className="topbar"><a href="/" className="brand">veross<span>PEOPLE</span></a><div className="workspace-name">Recrutamento <span className="tag">Versão 1.1</span></div><span className="account" title={userName}>{userName.split('@')[0]} <span className="avatar">{userName.slice(0,1).toUpperCase()}</span></span></header><main>
+ return <div className="workspace"><header className="topbar"><a href="/" className="brand">veross<span>PEOPLE</span></a><div className="workspace-name">Recrutamento <span className="tag">Versão 1.2</span></div><span className="account" title={userName}>{userName.split('@')[0]} <span className="avatar">{userName.slice(0,1).toUpperCase()}</span></span><form action="/api/auth/logout" method="post"><Button variant="outline" type="submit">Sair</Button></form></header><main>
  <div className="heading"><div><p className="eyebrow">GESTÃO DE TALENTOS</p><h1>Pessoas. Próximos passos.</h1><p className="subtitle">Acompanhe cada candidatura, do primeiro contato à contratação.</p></div><Button onClick={createCandidate} disabled={!data||busy}><Plus size={18}/> Novo candidato</Button></div>
  {errorBox}<div role="status" className="save-status">{busy?'Salvando…':notice}</div>
  {!data?<div className="empty"><p>{error?'Os cadastros não foram carregados.':'Carregando seus cadastros…'}</p>{error&&<Button onClick={load}>Tentar novamente</Button>}</div>:<>
@@ -61,4 +61,5 @@ export default function Workspace({userName}:{userName:string}){
  <Dialog open={settings} onOpenChange={open=>{if(!busy)setSettings(open);}}><DialogContent><DialogHeader><DialogTitle>Etapas do processo</DialogTitle><DialogDescription>Uma etapa por linha, na ordem desejada. Mantenha “Contratado”, “Não contratado” e as etapas que têm candidatos.</DialogDescription></DialogHeader>{errorBox}<Textarea aria-label="Etapas, uma por linha" rows={9} value={stageText} onChange={e=>setStageText(e.target.value)}/><Button disabled={busy} onClick={async()=>{if(data&&await save({...data,stages:stageText.split('\n').map(s=>s.trim()).filter(Boolean)}))setSettings(false);}}>Salvar etapas</Button></DialogContent></Dialog>
  </div>;
 }
+
 
