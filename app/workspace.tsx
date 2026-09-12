@@ -2,6 +2,8 @@
 import {useEffect,useState,useRef, type FormEvent} from 'react';
 import {moveCandidate,makeMovement,pendingRequired,type Movement} from '@/lib/transition';
 import {exitReasons,templateTasks,localDate,score,critical} from '@/lib/process';
+import {HomeActivities} from './home-activities';
+import type {Activity} from '@/lib/activities';
 import {CandidateProcess,TemplatesPanel} from './process-panels';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -14,7 +16,7 @@ import {type Candidate,type Job,type State,candidateSchema,stateSchema} from '@/
 const stamp=(v:string)=>new Date(v).toLocaleString('pt-BR');
 const day=(v:string)=>v?new Date(v+'T12:00:00').toLocaleDateString('pt-BR'):'';
 const closed=(s:string)=>s==='Contratado'||s==='Não contratado';
-export default function Workspace({userName}:{userName:string}){
+export default function Workspace({userName,userEmail,userId}:{userName:string;userEmail:string;userId:string}){
  const [assessmentEditing,setAssessmentEditing]=useState(false);
  const [dragId,setDragId]=useState<string|null>(null),[overStage,setOverStage]=useState<string|null>(null);
  const [movement,setMovement]=useState<Movement|null>(null);
@@ -29,6 +31,14 @@ export default function Workspace({userName}:{userName:string}){
  useEffect(()=>{void load();},[]);
  useEffect(()=>{const ctx=(document as any).modelContext;if(!ctx?.registerTool||!data)return;const lifecycle=new AbortController();try{Promise.resolve(ctx.registerTool({name:'list_recruitment_candidates',description:'Lista os candidatos cadastrados e suas etapas atuais.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute(input:unknown){if(!input||typeof input!=='object'||Object.keys(input).length)throw Error('Nenhum parâmetro é aceito.');return data.candidates.map(c=>({id:c.id,name:c.name,stage:c.stage,job:data.jobs.find(j=>j.id===c.jobId)?.title||null}));}},{signal:lifecycle.signal})).catch(()=>{});}catch{}return ()=>lifecycle.abort();},[data]);
  async function save(next:State){if(busy)return false;setBusy(true);setError('');try{const valid=stateSchema.safeParse(next);if(!valid.success)throw Error(valid.error.issues[0].message);const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:next,revision})});const b=await r.json() as {state:State;revision:number;error:string;key:string;name:string};if(!r.ok)throw Error(b.error);setData(next);setRevision(b.revision);setNotice('Alterações salvas');return true;}catch(e){setError((e as Error).message);return false;}finally{setBusy(false);}}
+ async function completeActivity(activity:Activity){
+  if(!data||busy||!activity.taskId)return;
+  const candidate=data.candidates.find(c=>c.id===activity.candidateId);
+  const task=candidate?.tasks?.find(t=>t.id===activity.taskId);
+  if(!candidate||!task||task.done)return;
+  const at=new Date().toISOString();
+  await save({...data,candidates:data.candidates.map(c=>c.id===candidate.id?{...c,updated:at,tasks:c.tasks?.map(t=>t.id===task.id?{...t,done:true,completedAt:at}:t),history:[{at,text:`Tarefa concluída: ${task.title} · ${userName}`},...c.history]}:c)});
+ }
  function createCandidate(){const at=new Date().toISOString();setError('');setDraft({id:crypto.randomUUID(),name:'',phone:'',email:'',linkedin:'',source:'',channel:'',jobId:'',stage:data!.stages[0],owner:'',nextAction:'',due:'',notes:'',evaluation:'',reason:'',created:at,updated:at,resume:null,history:[]});}
  async function saveCandidate(e:FormEvent){e.preventDefault();if(!draft||!data)return;if(assessmentEditing){setError('Inclua ou cancele a avaliação em edição antes de salvar a ficha.');return;}if(!candidateSchema.safeParse(draft).success){setError('Confira nome, e-mail e endereço do LinkedIn (https://).');return;}const old=data.candidates.find(c=>c.id===draft.id);if(old&&old.stage!==draft.stage){beginMove({...draft,stage:old.stage},draft.stage);setDraft(null);return;}const at=new Date().toISOString();const entry=!old?'Candidato cadastrado':old.stage!==draft.stage?`${old.stage} → ${draft.stage}${draft.reason?' • '+draft.reason:''}`:'Cadastro e acompanhamento atualizados';const templateId=draft.templateId||data.jobs.find(j=>j.id===draft.jobId)?.templateId||'';const apply=!old||(!old.templateId&&templateId);const added=apply?templateTasks(data.templates.find(t=>t.id===templateId),draft.stage,draft.owner,data.holidays):[];const updated={...draft,templateId,stageEnteredAt:draft.stageEnteredAt||at,tasks:[...(draft.tasks||[]),...added],updated:at,history:[{at,text:entry},...draft.history]};if(await save({...data,candidates:old?data.candidates.map(c=>c.id===updated.id?updated:c):[...data.candidates,updated]}))setDraft(null);}
  async function upload(file?:File){if(!file||!draft)return;setBusy(true);setError('');try{const form=new FormData();form.set('file',file);const r=await fetch('/api/resume',{method:'POST',body:form});const b=await r.json() as {state:State;revision:number;error:string;key:string;name:string};if(!r.ok)throw Error(b.error);setDraft(d=>d?{...d,resume:b}:d);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
@@ -42,8 +52,8 @@ export default function Workspace({userName}:{userName:string}){
  {errorBox}<div role="status" className="save-status">{busy?'Salvando…':notice}</div>
  {!data?<div className="empty"><p>{error?'Os cadastros não foram carregados.':'Carregando seus cadastros…'}</p>{error&&<Button onClick={load}>Tentar novamente</Button>}</div>:<>
  <section className="metrics" aria-label="Visão geral"><div><span>Candidatos em processo</span><strong>{data.candidates.filter(c=>!closed(c.stage)).length.toString().padStart(2,'0')}</strong><Users/></div><div><span>Vagas abertas</span><strong>{data.jobs.filter(j=>j.status==='Aberta').length.toString().padStart(2,'0')}</strong><BriefcaseBusiness/></div><div><span>Ações atrasadas</span><strong>{overdue.toString().padStart(2,'0')}</strong><Clock/></div><div><span>Contratações</span><strong>{data.candidates.filter(c=>c.stage==='Contratado').length.toString().padStart(2,'0')}</strong><Check/></div></section>
- <Tabs defaultValue="pipeline"><div className="sectionbar"><TabsList><TabsTrigger value="pipeline">Processo seletivo</TabsTrigger><TabsTrigger value="jobs">Vagas</TabsTrigger><TabsTrigger value="templates">Roteiros</TabsTrigger></TabsList><div className="actions"><Button variant="ghost" size="sm" onClick={load} disabled={busy}><RefreshCw size={15}/> Atualizar</Button><Button variant="outline" size="sm" onClick={()=>{setStageText(data.stages.join('\n'));setSettings(true);setError('');}}><SlidersHorizontal size={15}/> Editar etapas</Button></div></div>
- <TabsContent value="pipeline"><div className="filters"><label className="search"><Search size={18}/><Input aria-label="Buscar candidatos" placeholder="Buscar por nome, telefone ou origem" value={query} onChange={e=>setQuery(e.target.value)}/></label><select aria-label="Filtrar por vaga" value={jobFilter} onChange={e=>setJobFilter(e.target.value)}><option value="">Todas as vagas</option>{data.jobs.map(j=><option key={j.id} value={j.id}>{j.title}</option>)}</select><span>{candidates.length} candidatura{candidates.length===1?'':'s'}</span></div>
+ <Tabs defaultValue="home"><div className="sectionbar"><TabsList><TabsTrigger value="home">Início</TabsTrigger><TabsTrigger value="pipeline">Processo seletivo</TabsTrigger><TabsTrigger value="jobs">Vagas</TabsTrigger><TabsTrigger value="templates">Roteiros</TabsTrigger></TabsList><div className="actions"><Button variant="ghost" size="sm" onClick={load} disabled={busy}><RefreshCw size={15}/> Atualizar</Button><Button variant="outline" size="sm" onClick={()=>{setStageText(data.stages.join('\n'));setSettings(true);setError('');}}><SlidersHorizontal size={15}/> Editar etapas</Button></div></div>
+ <TabsContent value="home"><HomeActivities state={data} identity={{name:userName,email:userEmail,id:userId}} busy={busy} onOpen={c=>{setDraft(structuredClone(c));setError('' );}} onComplete={completeActivity}/></TabsContent><TabsContent value="pipeline"><div className="filters"><label className="search"><Search size={18}/><Input aria-label="Buscar candidatos" placeholder="Buscar por nome, telefone ou origem" value={query} onChange={e=>setQuery(e.target.value)}/></label><select aria-label="Filtrar por vaga" value={jobFilter} onChange={e=>setJobFilter(e.target.value)}><option value="">Todas as vagas</option>{data.jobs.map(j=><option key={j.id} value={j.id}>{j.title}</option>)}</select><span>{candidates.length} candidatura{candidates.length===1?'':'s'}</span></div>
  <div ref={boardRef} className="board" aria-label="Etapas do recrutamento">{data.stages.map((stage,i)=><section data-stage={stage} className={'column '+(closed(stage)?'terminal':'')+(overStage===stage?' drop-target':'')} key={stage}
  onDragOver={e=>{if(!dragId||busy)return;e.preventDefault();e.dataTransfer.dropEffect='move';setOverStage(stage);const board=boardRef.current;if(board){const rect=board.getBoundingClientRect();if(e.clientX>rect.right-65)board.scrollLeft+=35;else if(e.clientX<rect.left+65)board.scrollLeft-=35;}}}
  onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))setOverStage(null);}}
@@ -61,5 +71,6 @@ export default function Workspace({userName}:{userName:string}){
  <Dialog open={settings} onOpenChange={open=>{if(!busy)setSettings(open);}}><DialogContent><DialogHeader><DialogTitle>Etapas do processo</DialogTitle><DialogDescription>Uma etapa por linha, na ordem desejada. Mantenha “Contratado”, “Não contratado” e as etapas que têm candidatos.</DialogDescription></DialogHeader>{errorBox}<Textarea aria-label="Etapas, uma por linha" rows={9} value={stageText} onChange={e=>setStageText(e.target.value)}/><Button disabled={busy} onClick={async()=>{if(data&&await save({...data,stages:stageText.split('\n').map(s=>s.trim()).filter(Boolean)}))setSettings(false);}}>Salvar etapas</Button></DialogContent></Dialog>
  </div>;
 }
+
 
 
